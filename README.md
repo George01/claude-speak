@@ -16,7 +16,6 @@ A `/speak` skill lets you toggle voice on or off from inside any Claude Code ses
 
 - macOS
 - [Claude Code](https://claude.ai/code) CLI installed
-- `gh` CLI (only needed for installation from GitHub)
 
 ## Install
 
@@ -26,7 +25,7 @@ cd claude-speak
 ./install.sh
 ```
 
-That's it. Restart Claude Code if it's already running, then type `/speak` to toggle voice on or off.
+Restart Claude Code if it's already running, then type `/speak` to toggle voice on or off.
 
 ## Usage
 
@@ -36,13 +35,17 @@ That's it. Restart Claude Code if it's already running, then type `/speak` to to
 
 Voice is **enabled by default** after install.
 
-## Changing the voice
+## Getting the best voice
 
-The script uses your macOS system voice. To change it:
+For the most natural-sounding output, use a **Siri voice**:
 
-**System Settings → Accessibility → Spoken Content → System Voice**
+1. Open **System Settings → Accessibility → Spoken Content**
+2. Click the **System Voice** dropdown
+3. Select a **Siri** voice (Voice 2 is a good choice)
 
-To preview available voices from Terminal:
+Siri voices are free, run entirely on your Mac, and sound significantly more human than the default voices. The script automatically uses whatever you set as your system voice — no code changes needed.
+
+To preview all voices available on your machine:
 
 ```bash
 say -v '?'
