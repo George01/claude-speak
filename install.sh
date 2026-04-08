@@ -14,7 +14,8 @@ chmod +x "$SPEAK_SCRIPT"
 
 # Install skill
 mkdir -p "$SKILL_DIR"
-cp "$SCRIPT_DIR/speak.md" "$SKILL_DIR/speak.md"
+mkdir -p "$SKILL_DIR/speak"
+ cp "$SCRIPT_DIR/SKILL.md" "$SKILL_DIR/speak/SKILL.md"
 echo "✓ Skill installed → /speak to toggle voice on/off"
 
 # Add Stop hook to ~/.claude/settings.json
