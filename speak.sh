@@ -54,13 +54,7 @@ for line in reversed(lines):
             text = re.sub(r'^\s*[-*+\d.]+\s+', '', text, flags=re.MULTILINE)
             text = re.sub(r'\n+', ' ', text)
             text = re.sub(r'\s+', ' ', text).strip()
-
-            # First meaningful sentence only
-            sentences = re.split(r'(?<=[.!?])\s+', text)
-            sentences = [s for s in sentences if len(s) > 10]
-            result = sentences[0] if sentences else text[:200]
-
-            print(result[:300])
+            print(text[:2000])
             break
     except Exception:
         continue
@@ -71,8 +65,22 @@ if [ -z "$TEXT" ]; then
   exit 0
 fi
 
-# Use system default voice (set in System Settings → Accessibility → Spoken Content)
-say -r 195 "$TEXT" &
+# Summarize using Claude Haiku for a natural, spoken-friendly sentence
+SUMMARY=$(echo "Summarize the following in one short conversational sentence suitable for text-to-speech. No markdown, no lists, just a plain spoken sentence: $TEXT" | claude --print --model claude-haiku-4-5-20251001 2>/dev/null)
+
+# Fall back to first sentence if Claude summarization fails
+if [ -z "$SUMMARY" ]; then
+  SUMMARY=$(echo "$TEXT" | python3 -c "
+import sys, re
+text = sys.stdin.read()
+sentences = re.split(r'(?<=[.!?])\s+', text)
+sentences = [s for s in sentences if len(s) > 10]
+print(sentences[0][:300] if sentences else text[:300])
+")
+fi
+
+# Speak using system default voice (set in System Settings → Accessibility → Spoken Content)
+say -r 195 "$SUMMARY" &
 echo $! > "$PID_FILE"
 
 exit 0
