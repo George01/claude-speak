@@ -5,10 +5,8 @@
 PID_FILE="$HOME/.claude-speak.pid"
 
 # Kill any currently playing audio
-if [ -f "$PID_FILE" ]; then
-  kill "$(cat "$PID_FILE")" 2>/dev/null
-  rm -f "$PID_FILE"
-fi
+killall say 2>/dev/null
+rm -f "$PID_FILE"
 
 # Only run if enabled
 if [ ! -f "$HOME/.claude-speak-enabled" ]; then
