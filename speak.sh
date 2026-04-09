@@ -55,12 +55,11 @@ for line in reversed(lines):
             text = re.sub(r'\n+', ' ', text)
             text = re.sub(r'\s+', ' ', text).strip()
 
-            # Extract first meaningful sentence only
+            # First meaningful sentence only
             sentences = re.split(r'(?<=[.!?])\s+', text)
             sentences = [s for s in sentences if len(s) > 10]
             result = sentences[0] if sentences else text[:200]
 
-            # Hard cap
             print(result[:300])
             break
     except Exception:
@@ -72,20 +71,8 @@ if [ -z "$TEXT" ]; then
   exit 0
 fi
 
-# Pick best available voice — prefer Siri, fall back to Samantha
-VOICE=""
-if say -v "Siri" "" 2>/dev/null; then
-  VOICE="Siri"
-elif say -v "Samantha" "" 2>/dev/null; then
-  VOICE="Samantha"
-fi
-
-# Speak in background, track PID so it can be killed
-if [ -n "$VOICE" ]; then
-  say -v "$VOICE" -r 195 "$TEXT" &
-else
-  say -r 195 "$TEXT" &
-fi
+# Use system default voice (set in System Settings → Accessibility → Spoken Content)
+say -r 195 "$TEXT" &
 echo $! > "$PID_FILE"
 
 exit 0
