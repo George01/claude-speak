@@ -5,7 +5,6 @@ PID_FILE="$HOME/.claude-speak.pid"
 LAST_UUID_FILE="$HOME/.claude-speak-last-uuid"
 SPEECH_FILE="/tmp/claude-speak-text.txt"
 
-
 # Only run if enabled
 if [ ! -f "$HOME/.claude-speak-enabled" ]; then
   exit 0
@@ -65,33 +64,14 @@ for line in reversed(lines):
         # Remove chars that break osascript
         text = text.replace('"', '').replace('\\', '').replace("'", '')
 
+        # First 2 sentences, max 300 chars
         sentences = re.split(r'(?<=[.!?])\s+', text)
         sentences = [s.strip() for s in sentences if len(s.strip()) > 8]
+        result = ' '.join(sentences[:2]) if sentences else text
+        result = result[:300]
 
-        if not sentences:
-            best = text[:300]
-        else:
-            def score(s):
-                s_lower = s.lower()
-                pts = 0
-                if s_lower.startswith(('done', 'yes', 'no', 'sure', 'okay', 'fixed', 'updated', 'added', 'removed', 'created', 'installed')):
-                    pts += 4
-                if any(w in s_lower for w in ['now', 'will', 'can', 'ready', 'works', 'done', 'fixed', 'updated', 'pushed', 'committed']):
-                    pts += 2
-                if len(s) < 80:
-                    pts += 2
-                elif len(s) < 150:
-                    pts += 1
-                if s.endswith('?'):
-                    pts -= 2
-                return pts
-
-            scored = sorted([(score(s), i, s) for i, s in enumerate(sentences)], key=lambda x: (-x[0], x[1]))
-            best = scored[0][2][:300]
-
-        # Write UUID and speech to files
         with open(speech_file, 'w') as f:
-            f.write(uuid + '\n' + best)
+            f.write(uuid + '\n' + result)
         break
     except Exception:
         continue
