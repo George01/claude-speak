@@ -2,7 +2,6 @@
 # claude-speak: macOS TTS via Claude Code Stop hook
 
 SPEECH_FILE="/tmp/claude-speak-text.txt"
-LAST_UUID_FILE="$HOME/.claude-speak-last-uuid"
 
 # Only run if enabled
 if [ ! -f "$HOME/.claude-speak-enabled" ]; then
@@ -22,70 +21,74 @@ if [ -z "$TRANSCRIPT" ] || [ ! -f "$TRANSCRIPT" ]; then
   exit 0
 fi
 
-LAST_UUID=$(cat "$LAST_UUID_FILE" 2>/dev/null || echo "")
-
-python3 - "$TRANSCRIPT" "$LAST_UUID" "$SPEECH_FILE" << 'PYEOF'
+python3 - "$TRANSCRIPT" "$SPEECH_FILE" << 'PYEOF'
 import sys, json, re
 
 transcript_path = sys.argv[1]
-last_uuid = sys.argv[2] if len(sys.argv) > 2 else ""
-speech_file = sys.argv[3]
+speech_file = sys.argv[2]
 
 with open(transcript_path) as f:
     lines = [l.strip() for l in f if l.strip()]
 
-for line in reversed(lines):
+# Parse all entries in order
+entries = []
+for line in lines:
     try:
-        entry = json.loads(line)
-        if entry.get('type') != 'assistant':
-            continue
-
-        uuid = entry.get('uuid', '')
-        if uuid and uuid == last_uuid:
-            break  # Already spoke this — stop
-
-        content = entry.get('message', {}).get('content', [])
-        text = ' '.join(b['text'] for b in content if b.get('type') == 'text')
-        if not text.strip():
-            continue  # Tool use only — keep looking
-
-        # Strip markdown
-        text = re.sub(r'```[\s\S]*?```', '', text)
-        text = re.sub(r'`[^`]+`', '', text)
-        text = re.sub(r'#{1,6}\s+', '', text)
-        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-        text = re.sub(r'\*(.+?)\*', r'\1', text)
-        text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
-        text = re.sub(r'^\s*[-*+\d.]+\s+', '', text, flags=re.MULTILINE)
-        text = re.sub(r'\n+', ' ', text)
-        text = re.sub(r'\s+', ' ', text).strip()
-        text = text.replace('"', '').replace('\\', '').replace("'", '')
-
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        sentences = [s.strip() for s in sentences if len(s.strip()) > 8]
-        result = ' '.join(sentences[:2]) if sentences else text
-        result = result[:300]
-
-        with open(speech_file, 'w') as f:
-            f.write(uuid + '\n' + result)
-        break
-    except Exception:
+        entries.append(json.loads(line))
+    except:
         continue
+
+# Find the index of the last user message
+last_user_idx = -1
+for i, entry in enumerate(entries):
+    if entry.get('type') == 'user':
+        last_user_idx = i
+
+if last_user_idx == -1:
+    sys.exit(0)
+
+# Find the first assistant text message AFTER the last user message
+for entry in entries[last_user_idx + 1:]:
+    if entry.get('type') != 'assistant':
+        continue
+    content = entry.get('message', {}).get('content', [])
+    text = ' '.join(b['text'] for b in content if b.get('type') == 'text')
+    if not text.strip():
+        continue
+
+    # Strip markdown
+    text = re.sub(r'```[\s\S]*?```', '', text)
+    text = re.sub(r'`[^`]+`', '', text)
+    text = re.sub(r'#{1,6}\s+', '', text)
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    text = re.sub(r'^\s*[-*+\d.]+\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'\n+', ' ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    text = text.replace('"', '').replace('\\', '').replace("'", '')
+
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    sentences = [s.strip() for s in sentences if len(s.strip()) > 8]
+    result = ' '.join(sentences[:2]) if sentences else text
+    result = result[:300]
+
+    with open(speech_file, 'w') as f:
+        f.write(result)
+    break
 PYEOF
 
 if [ ! -f "$SPEECH_FILE" ]; then
   exit 0
 fi
 
-UUID=$(head -1 "$SPEECH_FILE")
-SPEECH=$(tail -n +2 "$SPEECH_FILE")
+SPEECH=$(cat "$SPEECH_FILE")
 rm -f "$SPEECH_FILE"
 
 if [ -z "$SPEECH" ]; then
   exit 0
 fi
 
-echo "$UUID" > "$LAST_UUID_FILE"
 killall say 2>/dev/null
 osascript -e "say \"$SPEECH\""
 
