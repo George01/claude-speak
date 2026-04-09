@@ -2,6 +2,7 @@
 # claude-speak: macOS TTS via Claude Code Stop hook
 
 SPEECH_FILE="/tmp/claude-speak-text.txt"
+LAST_UUID_FILE="$HOME/.claude-speak-last-uuid"
 
 if [ ! -f "$HOME/.claude-speak-enabled" ]; then
   exit 0
@@ -20,11 +21,14 @@ if [ -z "$TRANSCRIPT" ] || [ ! -f "$TRANSCRIPT" ]; then
   exit 0
 fi
 
-python3 - "$TRANSCRIPT" "$SPEECH_FILE" << 'PYEOF'
+LAST_UUID=$(cat "$LAST_UUID_FILE" 2>/dev/null || echo "")
+
+python3 - "$TRANSCRIPT" "$LAST_UUID" "$SPEECH_FILE" << 'PYEOF'
 import sys, json, re
 
 transcript_path = sys.argv[1]
-speech_file = sys.argv[2]
+last_uuid = sys.argv[2] if len(sys.argv) > 2 else ""
+speech_file = sys.argv[3]
 
 with open(transcript_path) as f:
     lines = [l.strip() for l in f if l.strip()]
@@ -36,29 +40,21 @@ for line in lines:
     except:
         continue
 
-# Find the last REAL user message (non-empty text content)
-last_user_idx = -1
-for i, entry in enumerate(entries):
-    if entry.get('type') == 'user':
-        content = entry.get('message', {}).get('content', '')
-        if isinstance(content, list):
-            text = ' '.join(b.get('text', '') for b in content if b.get('type') == 'text')
-        else:
-            text = str(content)
-        if text.strip():
-            last_user_idx = i
-
-if last_user_idx == -1:
-    sys.exit(0)
-
-# Find the first assistant TEXT message after the last real user message
-for entry in entries[last_user_idx + 1:]:
+# Walk backwards to find last assistant text message
+for entry in reversed(entries):
     if entry.get('type') != 'assistant':
         continue
+
+    uuid = entry.get('uuid', '')
+
+    # Already spoke this — stop
+    if uuid and uuid == last_uuid:
+        break
+
     content = entry.get('message', {}).get('content', [])
     text = ' '.join(b['text'] for b in content if b.get('type') == 'text')
     if not text.strip():
-        continue
+        continue  # No text, keep looking
 
     text = re.sub(r'```[\s\S]*?```', '', text)
     text = re.sub(r'`[^`]+`', '', text)
@@ -77,7 +73,7 @@ for entry in entries[last_user_idx + 1:]:
     result = result[:300]
 
     with open(speech_file, 'w') as f:
-        f.write(result)
+        f.write(uuid + '\n' + result)
     break
 PYEOF
 
@@ -85,13 +81,15 @@ if [ ! -f "$SPEECH_FILE" ]; then
   exit 0
 fi
 
-SPEECH=$(cat "$SPEECH_FILE")
+UUID=$(head -1 "$SPEECH_FILE")
+SPEECH=$(tail -n +2 "$SPEECH_FILE")
 rm -f "$SPEECH_FILE"
 
 if [ -z "$SPEECH" ]; then
   exit 0
 fi
 
+echo "$UUID" > "$LAST_UUID_FILE"
 killall say 2>/dev/null
 osascript -e "say \"$SPEECH\""
 
