@@ -91,8 +91,7 @@ fi
 
 echo "$UUID" > "$LAST_UUID_FILE"
 
-osascript -e "say \"$SPEECH\"" &
-disown
+osascript -e "say \"$SPEECH\""
 echo $! > "$PID_FILE"
 
 exit 0
