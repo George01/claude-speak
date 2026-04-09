@@ -2,6 +2,7 @@
 # claude-speak: macOS TTS via Claude Code Stop hook
 
 SPEECH_FILE="/tmp/claude-speak-text.txt"
+LAST_UUID_FILE="$HOME/.claude-speak-last-uuid"
 
 # Only run if enabled
 if [ ! -f "$HOME/.claude-speak-enabled" ]; then
@@ -21,11 +22,14 @@ if [ -z "$TRANSCRIPT" ] || [ ! -f "$TRANSCRIPT" ]; then
   exit 0
 fi
 
-python3 - "$TRANSCRIPT" "$SPEECH_FILE" << 'PYEOF'
+LAST_UUID=$(cat "$LAST_UUID_FILE" 2>/dev/null || echo "")
+
+python3 - "$TRANSCRIPT" "$LAST_UUID" "$SPEECH_FILE" << 'PYEOF'
 import sys, json, re
 
 transcript_path = sys.argv[1]
-speech_file = sys.argv[2]
+last_uuid = sys.argv[2] if len(sys.argv) > 2 else ""
+speech_file = sys.argv[3]
 
 with open(transcript_path) as f:
     lines = [l.strip() for l in f if l.strip()]
@@ -36,12 +40,16 @@ for line in reversed(lines):
         if entry.get('type') != 'assistant':
             continue
 
+        uuid = entry.get('uuid', '')
+        if uuid and uuid == last_uuid:
+            break  # Already spoke this — stop
+
         content = entry.get('message', {}).get('content', [])
         text = ' '.join(b['text'] for b in content if b.get('type') == 'text')
         if not text.strip():
-            continue
+            continue  # Tool use only — keep looking
 
-        # Strip markdown and code
+        # Strip markdown
         text = re.sub(r'```[\s\S]*?```', '', text)
         text = re.sub(r'`[^`]+`', '', text)
         text = re.sub(r'#{1,6}\s+', '', text)
@@ -53,14 +61,13 @@ for line in reversed(lines):
         text = re.sub(r'\s+', ' ', text).strip()
         text = text.replace('"', '').replace('\\', '').replace("'", '')
 
-        # First 2 sentences, max 300 chars
         sentences = re.split(r'(?<=[.!?])\s+', text)
         sentences = [s.strip() for s in sentences if len(s.strip()) > 8]
         result = ' '.join(sentences[:2]) if sentences else text
         result = result[:300]
 
         with open(speech_file, 'w') as f:
-            f.write(result)
+            f.write(uuid + '\n' + result)
         break
     except Exception:
         continue
@@ -70,13 +77,15 @@ if [ ! -f "$SPEECH_FILE" ]; then
   exit 0
 fi
 
-SPEECH=$(cat "$SPEECH_FILE")
+UUID=$(head -1 "$SPEECH_FILE")
+SPEECH=$(tail -n +2 "$SPEECH_FILE")
 rm -f "$SPEECH_FILE"
 
 if [ -z "$SPEECH" ]; then
   exit 0
 fi
 
+echo "$UUID" > "$LAST_UUID_FILE"
 killall say 2>/dev/null
 osascript -e "say \"$SPEECH\""
 
