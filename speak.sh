@@ -2,6 +2,7 @@
 # claude-speak: macOS TTS via Claude Code Stop hook
 
 PID_FILE="$HOME/.claude-speak.pid"
+LAST_UUID_FILE="$HOME/.claude-speak-last-uuid"
 
 # Kill any currently playing audio
 killall say 2>/dev/null
@@ -26,15 +27,16 @@ if [ -z "$TRANSCRIPT" ] || [ ! -f "$TRANSCRIPT" ]; then
   exit 0
 fi
 
-TEXT=$(python3 - "$TRANSCRIPT" << 'PYEOF'
+LAST_UUID=$(cat "$LAST_UUID_FILE" 2>/dev/null || echo "")
+
+TEXT=$(python3 - "$TRANSCRIPT" "$LAST_UUID" << 'PYEOF'
 import sys, json, re
-from datetime import datetime, timezone
 
-with open(sys.argv[1]) as f:
+transcript_path = sys.argv[1]
+last_uuid = sys.argv[2] if len(sys.argv) > 2 else ""
+
+with open(transcript_path) as f:
     lines = [l.strip() for l in f if l.strip()]
-
-import time
-now = time.time()
 
 for line in reversed(lines):
     try:
@@ -42,13 +44,10 @@ for line in reversed(lines):
         if entry.get('type') != 'assistant':
             continue
 
-        # Only speak recent messages
-        ts_str = entry.get('timestamp', '')
-        try:
-            ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00')).timestamp()
-        except:
-            ts = 0
-        if ts and (now - ts) > 5:
+        uuid = entry.get('uuid', '')
+
+        # Skip if we already spoke this message
+        if uuid and uuid == last_uuid:
             break
 
         content = entry.get('message', {}).get('content', [])
@@ -72,35 +71,28 @@ for line in reversed(lines):
         sentences = [s.strip() for s in sentences if len(s.strip()) > 8]
 
         if not sentences:
-            print(text[:300])
+            print(uuid + '|||' + text[:300])
             break
 
-        # Score each sentence — higher = more important
+        # Score each sentence
         def score(s):
             s_lower = s.lower()
             pts = 0
-            # Prefer direct answers and actions
             if s_lower.startswith(('done', 'yes', 'no', 'sure', 'okay', 'fixed', 'updated', 'added', 'removed', 'created', 'installed')):
                 pts += 4
-            # Prefer sentences with concrete outcomes
             if any(w in s_lower for w in ['now', 'will', 'can', 'ready', 'works', 'done', 'fixed', 'updated', 'pushed', 'committed']):
                 pts += 2
-            # Prefer shorter sentences (more direct)
             if len(s) < 80:
                 pts += 2
             elif len(s) < 150:
                 pts += 1
-            # Penalize sentences that are questions
             if s.endswith('?'):
                 pts -= 2
-            # Slight bonus for first sentence (usually the lede)
             return pts
 
-        scored = [(score(s), i, s) for i, s in enumerate(sentences)]
-        scored.sort(key=lambda x: (-x[0], x[1]))  # highest score, then earliest
-
+        scored = sorted([(score(s), i, s) for i, s in enumerate(sentences)], key=lambda x: (-x[0], x[1]))
         best = scored[0][2]
-        print(best[:300])
+        print(uuid + '|||' + best[:300])
         break
     except Exception:
         continue
@@ -111,7 +103,18 @@ if [ -z "$TEXT" ]; then
   exit 0
 fi
 
-nohup say -r 195 "$TEXT" > /dev/null 2>&1 &
+# Split UUID and speech text
+UUID=$(echo "$TEXT" | cut -d'|' -f1)
+SPEECH=$(echo "$TEXT" | sed 's/^[^|]*|||//')
+
+if [ -z "$SPEECH" ]; then
+  exit 0
+fi
+
+# Save UUID so we don't repeat this message
+echo "$UUID" > "$LAST_UUID_FILE"
+
+nohup say -r 195 "$SPEECH" > /dev/null 2>&1 &
 disown
 echo $! > "$PID_FILE"
 
