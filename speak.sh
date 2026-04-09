@@ -3,6 +3,7 @@
 
 PID_FILE="$HOME/.claude-speak.pid"
 LAST_UUID_FILE="$HOME/.claude-speak-last-uuid"
+SPEECH_FILE="/tmp/claude-speak-text.txt"
 
 # Kill any currently playing audio
 killall say 2>/dev/null
@@ -15,7 +16,6 @@ fi
 
 INPUT=$(cat)
 
-# Avoid infinite loop
 STOP_HOOK_ACTIVE=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('stop_hook_active', False))" 2>/dev/null)
 if [ "$STOP_HOOK_ACTIVE" = "True" ]; then
   exit 0
@@ -29,11 +29,12 @@ fi
 
 LAST_UUID=$(cat "$LAST_UUID_FILE" 2>/dev/null || echo "")
 
-RESULT=$(python3 - "$TRANSCRIPT" "$LAST_UUID" << 'PYEOF'
+python3 - "$TRANSCRIPT" "$LAST_UUID" "$SPEECH_FILE" << 'PYEOF'
 import sys, json, re
 
 transcript_path = sys.argv[1]
 last_uuid = sys.argv[2] if len(sys.argv) > 2 else ""
+speech_file = sys.argv[3]
 
 with open(transcript_path) as f:
     lines = [l.strip() for l in f if l.strip()]
@@ -53,6 +54,7 @@ for line in reversed(lines):
         if not text.strip():
             continue
 
+        # Strip markdown and code
         text = re.sub(r'```[\s\S]*?```', '', text)
         text = re.sub(r'`[^`]+`', '', text)
         text = re.sub(r'#{1,6}\s+', '', text)
@@ -63,42 +65,48 @@ for line in reversed(lines):
         text = re.sub(r'\n+', ' ', text)
         text = re.sub(r'\s+', ' ', text).strip()
 
+        # Remove chars that break osascript
+        text = text.replace('"', '').replace('\\', '').replace("'", '')
+
         sentences = re.split(r'(?<=[.!?])\s+', text)
         sentences = [s.strip() for s in sentences if len(s.strip()) > 8]
 
         if not sentences:
-            print(uuid + '|||' + text[:300])
-            break
+            best = text[:300]
+        else:
+            def score(s):
+                s_lower = s.lower()
+                pts = 0
+                if s_lower.startswith(('done', 'yes', 'no', 'sure', 'okay', 'fixed', 'updated', 'added', 'removed', 'created', 'installed')):
+                    pts += 4
+                if any(w in s_lower for w in ['now', 'will', 'can', 'ready', 'works', 'done', 'fixed', 'updated', 'pushed', 'committed']):
+                    pts += 2
+                if len(s) < 80:
+                    pts += 2
+                elif len(s) < 150:
+                    pts += 1
+                if s.endswith('?'):
+                    pts -= 2
+                return pts
 
-        def score(s):
-            s_lower = s.lower()
-            pts = 0
-            if s_lower.startswith(('done', 'yes', 'no', 'sure', 'okay', 'fixed', 'updated', 'added', 'removed', 'created', 'installed')):
-                pts += 4
-            if any(w in s_lower for w in ['now', 'will', 'can', 'ready', 'works', 'done', 'fixed', 'updated', 'pushed', 'committed']):
-                pts += 2
-            if len(s) < 80:
-                pts += 2
-            elif len(s) < 150:
-                pts += 1
-            if s.endswith('?'):
-                pts -= 2
-            return pts
+            scored = sorted([(score(s), i, s) for i, s in enumerate(sentences)], key=lambda x: (-x[0], x[1]))
+            best = scored[0][2][:300]
 
-        scored = sorted([(score(s), i, s) for i, s in enumerate(sentences)], key=lambda x: (-x[0], x[1]))
-        print(uuid + '|||' + scored[0][2][:300])
+        # Write UUID and speech to files
+        with open(speech_file, 'w') as f:
+            f.write(uuid + '\n' + best)
         break
     except Exception:
         continue
 PYEOF
-)
 
-if [ -z "$RESULT" ]; then
+if [ ! -f "$SPEECH_FILE" ]; then
   exit 0
 fi
 
-UUID=$(echo "$RESULT" | cut -d'|' -f1)
-SPEECH=$(echo "$RESULT" | sed 's/^[^|]*|||//')
+UUID=$(head -1 "$SPEECH_FILE")
+SPEECH=$(tail -1 "$SPEECH_FILE")
+rm -f "$SPEECH_FILE"
 
 if [ -z "$SPEECH" ]; then
   exit 0
@@ -106,8 +114,7 @@ fi
 
 echo "$UUID" > "$LAST_UUID_FILE"
 
-# Use osascript — runs in user session with guaranteed audio access
-osascript -e "say \"$(echo "$SPEECH" | sed 's/"/\\"/g')\"" &
+osascript -e "say \"$SPEECH\"" &
 disown
 echo $! > "$PID_FILE"
 
