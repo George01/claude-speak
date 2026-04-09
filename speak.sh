@@ -68,7 +68,8 @@ if [ -z "$TEXT" ]; then
   exit 0
 fi
 
-say -r 195 "$TEXT" &
+nohup say -r 195 "$TEXT" > /dev/null 2>&1 &
+disown
 echo $! > "$PID_FILE"
 
 exit 0
