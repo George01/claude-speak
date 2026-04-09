@@ -5,9 +5,6 @@ PID_FILE="$HOME/.claude-speak.pid"
 LAST_UUID_FILE="$HOME/.claude-speak-last-uuid"
 SPEECH_FILE="/tmp/claude-speak-text.txt"
 
-# Kill any currently playing audio
-killall say 2>/dev/null
-rm -f "$PID_FILE"
 
 # Only run if enabled
 if [ ! -f "$HOME/.claude-speak-enabled" ]; then
