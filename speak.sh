@@ -3,7 +3,6 @@
 # Toggle with: touch ~/.claude-speak-enabled / rm ~/.claude-speak-enabled
 
 PID_FILE="$HOME/.claude-speak.pid"
-CLAUDE_BIN=$(which claude 2>/dev/null || echo "/Users/base/.nvm/versions/node/v22.14.0/bin/claude")
 
 # Kill any currently playing audio
 if [ -f "$PID_FILE" ]; then
@@ -44,6 +43,8 @@ for line in reversed(lines):
             text = ' '.join(b['text'] for b in content if b.get('type') == 'text')
             if not text.strip():
                 continue
+
+            # Strip markdown and code
             text = re.sub(r'```[\s\S]*?```', '', text)
             text = re.sub(r'`[^`]+`', '', text)
             text = re.sub(r'#{1,6}\s+', '', text)
@@ -53,7 +54,12 @@ for line in reversed(lines):
             text = re.sub(r'^\s*[-*+\d.]+\s+', '', text, flags=re.MULTILINE)
             text = re.sub(r'\n+', ' ', text)
             text = re.sub(r'\s+', ' ', text).strip()
-            print(text[:500])
+
+            # First 2 meaningful sentences
+            sentences = re.split(r'(?<=[.!?])\s+', text)
+            sentences = [s for s in sentences if len(s) > 8]
+            result = ' '.join(sentences[:2]) if sentences else text
+            print(result[:350])
             break
     except Exception:
         continue
@@ -64,27 +70,7 @@ if [ -z "$TEXT" ]; then
   exit 0
 fi
 
-# Short responses don't need summarization — speak directly
-if [ ${#TEXT} -lt 150 ]; then
-  SUMMARY="$TEXT"
-else
-  # Summarize via Claude Haiku for a natural spoken sentence
-  SUMMARY=$(echo "Summarize in one short spoken sentence, no markdown: $TEXT" | "$CLAUDE_BIN" --print --model claude-haiku-4-5-20251001 2>/dev/null)
-
-  # Fall back to first sentence if Haiku fails
-  if [ -z "$SUMMARY" ]; then
-    SUMMARY=$(echo "$TEXT" | python3 -c "
-import sys, re
-text = sys.stdin.read()
-sentences = re.split(r'(?<=[.!?])\s+', text)
-sentences = [s for s in sentences if len(s) > 10]
-print(sentences[0][:300] if sentences else text[:300])
-")
-  fi
-fi
-
-# Speak using system default voice (set in System Settings → Accessibility → Spoken Content)
-say -r 195 "$SUMMARY" &
+say -r 195 "$TEXT" &
 echo $! > "$PID_FILE"
 
 exit 0
