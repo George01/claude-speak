@@ -1,8 +1,6 @@
 #!/bin/bash
 # claude-speak: macOS TTS via Claude Code Stop hook
 
-PID_FILE="$HOME/.claude-speak.pid"
-LAST_UUID_FILE="$HOME/.claude-speak-last-uuid"
 SPEECH_FILE="/tmp/claude-speak-text.txt"
 
 # Only run if enabled
@@ -23,14 +21,11 @@ if [ -z "$TRANSCRIPT" ] || [ ! -f "$TRANSCRIPT" ]; then
   exit 0
 fi
 
-LAST_UUID=$(cat "$LAST_UUID_FILE" 2>/dev/null || echo "")
-
-python3 - "$TRANSCRIPT" "$LAST_UUID" "$SPEECH_FILE" << 'PYEOF'
+python3 - "$TRANSCRIPT" "$SPEECH_FILE" << 'PYEOF'
 import sys, json, re
 
 transcript_path = sys.argv[1]
-last_uuid = sys.argv[2] if len(sys.argv) > 2 else ""
-speech_file = sys.argv[3]
+speech_file = sys.argv[2]
 
 with open(transcript_path) as f:
     lines = [l.strip() for l in f if l.strip()]
@@ -40,10 +35,6 @@ for line in reversed(lines):
         entry = json.loads(line)
         if entry.get('type') != 'assistant':
             continue
-
-        uuid = entry.get('uuid', '')
-        if uuid and uuid == last_uuid:
-            break
 
         content = entry.get('message', {}).get('content', [])
         text = ' '.join(b['text'] for b in content if b.get('type') == 'text')
@@ -60,8 +51,6 @@ for line in reversed(lines):
         text = re.sub(r'^\s*[-*+\d.]+\s+', '', text, flags=re.MULTILINE)
         text = re.sub(r'\n+', ' ', text)
         text = re.sub(r'\s+', ' ', text).strip()
-
-        # Remove chars that break osascript
         text = text.replace('"', '').replace('\\', '').replace("'", '')
 
         # First 2 sentences, max 300 chars
@@ -71,7 +60,7 @@ for line in reversed(lines):
         result = result[:300]
 
         with open(speech_file, 'w') as f:
-            f.write(uuid + '\n' + result)
+            f.write(result)
         break
     except Exception:
         continue
@@ -81,17 +70,14 @@ if [ ! -f "$SPEECH_FILE" ]; then
   exit 0
 fi
 
-UUID=$(head -1 "$SPEECH_FILE")
-SPEECH=$(tail -1 "$SPEECH_FILE")
+SPEECH=$(cat "$SPEECH_FILE")
 rm -f "$SPEECH_FILE"
 
 if [ -z "$SPEECH" ]; then
   exit 0
 fi
 
-echo "$UUID" > "$LAST_UUID_FILE"
-
+killall say 2>/dev/null
 osascript -e "say \"$SPEECH\""
-echo $! > "$PID_FILE"
 
 exit 0
