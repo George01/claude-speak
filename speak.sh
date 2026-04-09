@@ -66,7 +66,7 @@ if [ -z "$TEXT" ]; then
 fi
 
 # Summarize using Claude Haiku for a natural, spoken-friendly sentence
-SUMMARY=$(echo "Summarize the following in one short conversational sentence suitable for text-to-speech. No markdown, no lists, just a plain spoken sentence: $TEXT" | claude --print --model claude-haiku-4-5-20251001 2>/dev/null)
+SUMMARY=$(echo "Summarize the following in one short conversational sentence suitable for text-to-speech. No markdown, no lists, just a plain spoken sentence: $TEXT" | /Users/base/.nvm/versions/node/v22.14.0/bin/claude --print --model claude-haiku-4-5-20251001 2>/dev/null)
 
 # Fall back to first sentence if Claude summarization fails
 if [ -z "$SUMMARY" ]; then
