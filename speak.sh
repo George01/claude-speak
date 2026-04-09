@@ -45,7 +45,7 @@ for line in reversed(lines):
                 ts = datetime.fromisoformat(ts_str.replace("Z","+00:00")).timestamp()
             except:
                 ts = 0
-            if ts and (now - ts) > 10:
+            if ts and (now - ts) > 5:
                 break  # Too old, stop looking
 
             content = entry.get('message', {}).get('content', [])
