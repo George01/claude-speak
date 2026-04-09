@@ -1,6 +1,5 @@
 #!/bin/bash
 # claude-speak: macOS TTS via Claude Code Stop hook
-# Toggle with: touch ~/.claude-speak-enabled / rm ~/.claude-speak-enabled
 
 PID_FILE="$HOME/.claude-speak.pid"
 
@@ -28,21 +27,32 @@ if [ -z "$TRANSCRIPT" ] || [ ! -f "$TRANSCRIPT" ]; then
 fi
 
 TEXT=$(python3 - "$TRANSCRIPT" << 'PYEOF'
-import sys, json, re
+import sys, json, re, time, os
 
 with open(sys.argv[1]) as f:
     lines = [l.strip() for l in f if l.strip()]
+
+now = time.time()
 
 for line in reversed(lines):
     try:
         entry = json.loads(line)
         if entry.get('type') == 'assistant':
+            # Only speak messages written in the last 10 seconds
+            ts_str = entry.get("timestamp", "")
+            try:
+                from datetime import datetime, timezone
+                ts = datetime.fromisoformat(ts_str.replace("Z","+00:00")).timestamp()
+            except:
+                ts = 0
+            if ts and (now - ts) > 10:
+                break  # Too old, stop looking
+
             content = entry.get('message', {}).get('content', [])
             text = ' '.join(b['text'] for b in content if b.get('type') == 'text')
             if not text.strip():
                 continue
 
-            # Strip markdown and code
             text = re.sub(r'```[\s\S]*?```', '', text)
             text = re.sub(r'`[^`]+`', '', text)
             text = re.sub(r'#{1,6}\s+', '', text)
@@ -53,7 +63,6 @@ for line in reversed(lines):
             text = re.sub(r'\n+', ' ', text)
             text = re.sub(r'\s+', ' ', text).strip()
 
-            # First 2 meaningful sentences
             sentences = re.split(r'(?<=[.!?])\s+', text)
             sentences = [s for s in sentences if len(s) > 8]
             result = ' '.join(sentences[:2]) if sentences else text
