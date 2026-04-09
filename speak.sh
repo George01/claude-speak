@@ -2,6 +2,14 @@
 # claude-speak: macOS TTS via Claude Code Stop hook
 # Toggle with: touch ~/.claude-speak-enabled / rm ~/.claude-speak-enabled
 
+PID_FILE="$HOME/.claude-speak.pid"
+
+# Kill any currently playing audio
+if [ -f "$PID_FILE" ]; then
+  kill "$(cat "$PID_FILE")" 2>/dev/null
+  rm -f "$PID_FILE"
+fi
+
 # Only run if enabled
 if [ ! -f "$HOME/.claude-speak-enabled" ]; then
   exit 0
@@ -35,6 +43,8 @@ for line in reversed(lines):
             text = ' '.join(b['text'] for b in content if b.get('type') == 'text')
             if not text.strip():
                 continue
+
+            # Strip markdown and code
             text = re.sub(r'```[\s\S]*?```', '', text)
             text = re.sub(r'`[^`]+`', '', text)
             text = re.sub(r'#{1,6}\s+', '', text)
@@ -43,15 +53,39 @@ for line in reversed(lines):
             text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
             text = re.sub(r'^\s*[-*+\d.]+\s+', '', text, flags=re.MULTILINE)
             text = re.sub(r'\n+', ' ', text)
-            print(text.strip()[:1500])
+            text = re.sub(r'\s+', ' ', text).strip()
+
+            # Extract first meaningful sentence only
+            sentences = re.split(r'(?<=[.!?])\s+', text)
+            sentences = [s for s in sentences if len(s) > 10]
+            result = sentences[0] if sentences else text[:200]
+
+            # Hard cap
+            print(result[:300])
             break
     except Exception:
         continue
 PYEOF
 )
 
-if [ -n "$TEXT" ]; then
+if [ -z "$TEXT" ]; then
+  exit 0
+fi
+
+# Pick best available voice — prefer Siri, fall back to Samantha
+VOICE=""
+if say -v "Siri" "" 2>/dev/null; then
+  VOICE="Siri"
+elif say -v "Samantha" "" 2>/dev/null; then
+  VOICE="Samantha"
+fi
+
+# Speak in background, track PID so it can be killed
+if [ -n "$VOICE" ]; then
+  say -v "$VOICE" -r 195 "$TEXT" &
+else
   say -r 195 "$TEXT" &
 fi
+echo $! > "$PID_FILE"
 
 exit 0

@@ -3,7 +3,11 @@ name: speak
 description: Toggle Claude voice responses on or off using local TTS
 ---
 
-Toggle voice output for Claude responses. Check if `~/.claude-speak-enabled` exists to determine current state, then either create or remove it to toggle. Use the Bash tool to do this, then confirm the new state to the user in one short sentence.
+Toggle voice output for Claude responses. Use the Bash tool to:
 
-- If the file does NOT exist → create it with `touch ~/.claude-speak-enabled` → confirm voice is now ON
-- If the file DOES exist → delete it with `rm ~/.claude-speak-enabled` → confirm voice is now OFF
+1. Kill any currently playing audio: `kill $(cat ~/.claude-speak.pid 2>/dev/null) 2>/dev/null; rm -f ~/.claude-speak.pid`
+2. Check if `~/.claude-speak-enabled` exists:
+   - If it does NOT exist → `touch ~/.claude-speak-enabled` → confirm voice is now **ON**
+   - If it DOES exist → `rm ~/.claude-speak-enabled` → confirm voice is now **OFF**
+
+Keep your confirmation to one short sentence.
