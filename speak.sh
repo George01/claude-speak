@@ -40,21 +40,18 @@ for line in lines:
     except:
         continue
 
-# Walk backwards to find last assistant text message
 for entry in reversed(entries):
     if entry.get('type') != 'assistant':
         continue
 
     uuid = entry.get('uuid', '')
-
-    # Already spoke this — stop
     if uuid and uuid == last_uuid:
         break
 
     content = entry.get('message', {}).get('content', [])
     text = ' '.join(b['text'] for b in content if b.get('type') == 'text')
     if not text.strip():
-        continue  # No text, keep looking
+        continue
 
     text = re.sub(r'```[\s\S]*?```', '', text)
     text = re.sub(r'`[^`]+`', '', text)
