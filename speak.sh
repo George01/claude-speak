@@ -3,7 +3,6 @@
 
 SPEECH_FILE="/tmp/claude-speak-text.txt"
 
-# Only run if enabled
 if [ ! -f "$HOME/.claude-speak-enabled" ]; then
   exit 0
 fi
@@ -30,7 +29,6 @@ speech_file = sys.argv[2]
 with open(transcript_path) as f:
     lines = [l.strip() for l in f if l.strip()]
 
-# Parse all entries in order
 entries = []
 for line in lines:
     try:
@@ -38,16 +36,22 @@ for line in lines:
     except:
         continue
 
-# Find the index of the last user message
+# Find the last REAL user message (non-empty text content)
 last_user_idx = -1
 for i, entry in enumerate(entries):
     if entry.get('type') == 'user':
-        last_user_idx = i
+        content = entry.get('message', {}).get('content', '')
+        if isinstance(content, list):
+            text = ' '.join(b.get('text', '') for b in content if b.get('type') == 'text')
+        else:
+            text = str(content)
+        if text.strip():
+            last_user_idx = i
 
 if last_user_idx == -1:
     sys.exit(0)
 
-# Find the first assistant text message AFTER the last user message
+# Find the first assistant TEXT message after the last real user message
 for entry in entries[last_user_idx + 1:]:
     if entry.get('type') != 'assistant':
         continue
@@ -56,7 +60,6 @@ for entry in entries[last_user_idx + 1:]:
     if not text.strip():
         continue
 
-    # Strip markdown
     text = re.sub(r'```[\s\S]*?```', '', text)
     text = re.sub(r'`[^`]+`', '', text)
     text = re.sub(r'#{1,6}\s+', '', text)
