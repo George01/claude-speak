@@ -29,7 +29,7 @@ fi
 
 LAST_UUID=$(cat "$LAST_UUID_FILE" 2>/dev/null || echo "")
 
-TEXT=$(python3 - "$TRANSCRIPT" "$LAST_UUID" << 'PYEOF'
+RESULT=$(python3 - "$TRANSCRIPT" "$LAST_UUID" << 'PYEOF'
 import sys, json, re
 
 transcript_path = sys.argv[1]
@@ -45,8 +45,6 @@ for line in reversed(lines):
             continue
 
         uuid = entry.get('uuid', '')
-
-        # Skip if we already spoke this message
         if uuid and uuid == last_uuid:
             break
 
@@ -55,7 +53,6 @@ for line in reversed(lines):
         if not text.strip():
             continue
 
-        # Strip markdown and code
         text = re.sub(r'```[\s\S]*?```', '', text)
         text = re.sub(r'`[^`]+`', '', text)
         text = re.sub(r'#{1,6}\s+', '', text)
@@ -66,7 +63,6 @@ for line in reversed(lines):
         text = re.sub(r'\n+', ' ', text)
         text = re.sub(r'\s+', ' ', text).strip()
 
-        # Split into sentences
         sentences = re.split(r'(?<=[.!?])\s+', text)
         sentences = [s.strip() for s in sentences if len(s.strip()) > 8]
 
@@ -74,7 +70,6 @@ for line in reversed(lines):
             print(uuid + '|||' + text[:300])
             break
 
-        # Score each sentence
         def score(s):
             s_lower = s.lower()
             pts = 0
@@ -91,30 +86,28 @@ for line in reversed(lines):
             return pts
 
         scored = sorted([(score(s), i, s) for i, s in enumerate(sentences)], key=lambda x: (-x[0], x[1]))
-        best = scored[0][2]
-        print(uuid + '|||' + best[:300])
+        print(uuid + '|||' + scored[0][2][:300])
         break
     except Exception:
         continue
 PYEOF
 )
 
-if [ -z "$TEXT" ]; then
+if [ -z "$RESULT" ]; then
   exit 0
 fi
 
-# Split UUID and speech text
-UUID=$(echo "$TEXT" | cut -d'|' -f1)
-SPEECH=$(echo "$TEXT" | sed 's/^[^|]*|||//')
+UUID=$(echo "$RESULT" | cut -d'|' -f1)
+SPEECH=$(echo "$RESULT" | sed 's/^[^|]*|||//')
 
 if [ -z "$SPEECH" ]; then
   exit 0
 fi
 
-# Save UUID so we don't repeat this message
 echo "$UUID" > "$LAST_UUID_FILE"
 
-nohup say -r 195 "$SPEECH" > /dev/null 2>&1 &
+# Use osascript — runs in user session with guaranteed audio access
+osascript -e "say \"$(echo "$SPEECH" | sed 's/"/\\"/g')\"" &
 disown
 echo $! > "$PID_FILE"
 
